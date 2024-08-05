@@ -16,6 +16,7 @@ contract Raffle is VRFConsumerBaseV2Plus {
     error Raffle_NotEnoughtETH();
     error Raffle_TransferFailed();
     error Raffle_RaffleNotOpen();
+    error Raffle__UpkeepNotNeeded(uint balance,uint playerLength,uint raffleState);
 
     /* Type declarations */
 
@@ -71,24 +72,71 @@ contract Raffle is VRFConsumerBaseV2Plus {
         emit RaffleEntered(msg.sender);
     }
 
+    /**
+     * @dev This is the function that the Chainlink Keeper nodes call
+     * they look for `upkeepNeeded` to return True.
+     * the following should be true for this to return true:
+     * 1. The time interval has passed between raffle runs.
+     * 2. The lottery is open.
+     * 3. The contract has ETH.
+     * 4. There are players registered.
+     * 5. Implicity, your subscription is funded with LINK.
+     */
+    function checkUpkeep(bytes calldata /* checkData */ )
+        public
+        view
+        returns (bool upkeepNeeded, bytes memory /* performData */ )
+    {
+        bool isOpen = RaffleState.OPEN == s_raffleState;
+        bool timePassed = ((block.timestamp - s_lastTimeStamp) >= i_interval);
+        bool hasPlayers = s_player.length > 0;
+        bool hasBalance = address(this).balance > 0;
+        upkeepNeeded = (timePassed && isOpen && hasBalance && hasPlayers);
+        return (upkeepNeeded, "0x0");
+    }
+
+        // 1. Get a random number
+    // 2. Use the random number to pick a player
+    // 3. Automatically called
+    function performUpkeep(bytes calldata /* performData */) external  {
+        (bool upkeepNeeded, ) = checkUpkeep("");
+        // require(upkeepNeeded, "Upkeep not needed");
+        if (!upkeepNeeded) {
+            revert Raffle__UpkeepNotNeeded(
+                address(this).balance,
+                s_player.length,
+                uint256(s_raffleState)
+            );
+        }
+        s_raffleState = RaffleState.CALCULATING;
+        uint256 requestId = s_vrfCoordinator.requestRandomWords(
+            i_keyHash,
+            i_subscriptionId,
+            REQUEST_CONFIRMATION,
+            i_callbackGasLimit,
+            NUM_WORDS
+        );
+
+    }
+
     function pickWinner() external {
         if (block.timestamp - s_lastTimeStamp < i_interval) {
             revert();
         }
         s_raffleState = RaffleState.CALCULATING; //RaffleState(1)
-        uint256 requestId = s_vrfCoordinator.requestRandomWords(
-            VRFV2PlusClient.RandomWordsRequest({
-                keyHash: i_keyHash,
-                subId: i_subscriptionId,
-                requestConfirmations: REQUEST_CONFIRMATION,
-                callbackGasLimit: i_callbackGasLimit,
-                numWords: NUM_WORDS,
-                extraArgs: VRFV2PlusClient._argsToBytes(
-                    // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
-                    VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
-                    )
-            })
-        );
+        // uint256 requestId = s_vrfCoordinator.requestRandomWords(
+        //     VRFV2PlusClient.RandomWordsRequest({
+        //         keyHash: i_keyHash,
+        //         subId: i_subscriptionId,
+        //         requestConfirmations: REQUEST_CONFIRMATION,
+        //         callbackGasLimit: i_callbackGasLimit,
+        //         numWords: NUM_WORDS,
+        //         extraArgs: VRFV2PlusClient._argsToBytes(
+        //             // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
+        //             VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
+        //             )
+        //     })
+        // );
     }
 
     function fulfillRandomWords(
@@ -101,8 +149,8 @@ contract Raffle is VRFConsumerBaseV2Plus {
         s_recentWinner = recentWinner;
 
         s_raffleState = RaffleState.OPEN;
-        s_player= new address payable[](0);
-        s_lastTimeStamp=block.timestamp;
+        s_player = new address payable[](0);
+        s_lastTimeStamp = block.timestamp;
         emit WinnerPicked(recentWinner);
 
         (bool success,) = recentWinner.call{value: address(this).balance}("");
