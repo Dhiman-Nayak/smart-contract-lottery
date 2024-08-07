@@ -18,6 +18,7 @@ https://book.getfoundry.sh/
 ### Build
 
 ```shell
+$ forge install smartcontractkit/chainlink-brownie-contracts --no-commit
 $ forge build
 ```
 

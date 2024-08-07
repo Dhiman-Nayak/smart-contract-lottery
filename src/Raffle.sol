@@ -16,7 +16,7 @@ contract Raffle is VRFConsumerBaseV2Plus {
     error Raffle_NotEnoughtETH();
     error Raffle_TransferFailed();
     error Raffle_RaffleNotOpen();
-    error Raffle__UpkeepNotNeeded(uint balance,uint playerLength,uint raffleState);
+    error Raffle__UpkeepNotNeeded(uint256 balance, uint256 playerLength, uint256 raffleState);
 
     /* Type declarations */
 
@@ -95,28 +95,36 @@ contract Raffle is VRFConsumerBaseV2Plus {
         return (upkeepNeeded, "0x0");
     }
 
-        // 1. Get a random number
+    // 1. Get a random number
     // 2. Use the random number to pick a player
     // 3. Automatically called
-    function performUpkeep(bytes calldata /* performData */) external  {
-        (bool upkeepNeeded, ) = checkUpkeep("");
+    function performUpkeep(bytes calldata /* performData */ ) external {
+        (bool upkeepNeeded,) = checkUpkeep(abi.encode(""));
         // require(upkeepNeeded, "Upkeep not needed");
         if (!upkeepNeeded) {
-            revert Raffle__UpkeepNotNeeded(
-                address(this).balance,
-                s_player.length,
-                uint256(s_raffleState)
-            );
+            revert Raffle__UpkeepNotNeeded(address(this).balance, s_player.length, uint256(s_raffleState));
         }
         s_raffleState = RaffleState.CALCULATING;
+        // uint256 requestId = s_vrfCoordinator.requestRandomWords(
+        //     i_keyHash,
+        //     i_subscriptionId,
+        //     REQUEST_CONFIRMATION,
+        //     i_callbackGasLimit,
+        //     NUM_WORDS
+        // );
         uint256 requestId = s_vrfCoordinator.requestRandomWords(
-            i_keyHash,
-            i_subscriptionId,
-            REQUEST_CONFIRMATION,
-            i_callbackGasLimit,
-            NUM_WORDS
+            VRFV2PlusClient.RandomWordsRequest({
+                keyHash: i_keyHash,
+                subId: i_subscriptionId,
+                requestConfirmations: REQUEST_CONFIRMATION,
+                callbackGasLimit: i_callbackGasLimit,
+                numWords: NUM_WORDS,
+                extraArgs: VRFV2PlusClient._argsToBytes(
+                    // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
+                    VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
+                    )
+            })
         );
-
     }
 
     function pickWinner() external {
@@ -124,19 +132,19 @@ contract Raffle is VRFConsumerBaseV2Plus {
             revert();
         }
         s_raffleState = RaffleState.CALCULATING; //RaffleState(1)
-        // uint256 requestId = s_vrfCoordinator.requestRandomWords(
-        //     VRFV2PlusClient.RandomWordsRequest({
-        //         keyHash: i_keyHash,
-        //         subId: i_subscriptionId,
-        //         requestConfirmations: REQUEST_CONFIRMATION,
-        //         callbackGasLimit: i_callbackGasLimit,
-        //         numWords: NUM_WORDS,
-        //         extraArgs: VRFV2PlusClient._argsToBytes(
-        //             // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
-        //             VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
-        //             )
-        //     })
-        // );
+            // uint256 requestId = s_vrfCoordinator.requestRandomWords(
+            //     VRFV2PlusClient.RandomWordsRequest({
+            //         keyHash: i_keyHash,
+            //         subId: i_subscriptionId,
+            //         requestConfirmations: REQUEST_CONFIRMATION,
+            //         callbackGasLimit: i_callbackGasLimit,
+            //         numWords: NUM_WORDS,
+            //         extraArgs: VRFV2PlusClient._argsToBytes(
+            //             // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
+            //             VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
+            //             )
+            //     })
+            // );
     }
 
     function fulfillRandomWords(
